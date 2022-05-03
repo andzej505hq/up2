@@ -2,14 +2,9 @@ name: Pick commits into a release branch
 on:
   workflow_dispatch:
     inputs:
-      foo:
-        description: bar
+      pr_number:
+        description: Pull request number
         required: True
-  pull_request:
-    types:
-      - closed
-      - opened
-      - edited
 
 jobs:
   pick-to-release-branch:
@@ -18,27 +13,39 @@ jobs:
       - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
       - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
       - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
-      - run: echo "🔎PR number ${{ github.event.number }}"
-      - uses: 8BitJonny/gh-get-current-pr@2.0.0
-        id: PR
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          # Verbose setting SHA when using Pull_Request event trigger to fix #16
-          sha: ${{ github.event.pull_request.head.sha }}
-          # Only return if PR is still open
-          filterOutClosed: true
-          # Only return if PR is not in draft state
-          filterOutDraft: 1
-      - run: echo "Your PR is ${prNumber} and its JSON is ${prJSON}"
+      - run: echo "🔎PR number ${{ toJson(github.event.repository.owner) }}"
+      - uses: octokit/graphql-action@v2.x
+        id: get_pr
         env:
-          prNumber: ${{ steps.PR.outputs.number }}
-          # JSON object with the full PR object
-          prJSON: ${{ steps.PR.outputs.pr }}
-          # Direct access to common PR properties
-          prUrl: ${{ steps.PR.outputs.pr_url }}
-          prTitle: ${{ steps.PR.outputs.pr_title }}
-          prBody: ${{ steps.PR.outputs.pr_body }}
-          prCreatedAt: ${{ steps.PR.outputs.pr_created_at }}
-          prMergedAt: ${{ steps.PR.outputs.pr_merged_at }}
-          prClosedAt: ${{ steps.PR.outputs.pr_closed_at }}
-          prLabel: ${{ steps.PR.outputs.pr_labels }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          query: |
+            query($owner:String!,$repo:String!,$pr_num:Int!) {
+              repository(owner:$owner,name:$repo) {
+                pullRequest(number: $pr_num) {
+                  commits(first: 100) {
+                    totalCount
+                    nodes {
+                      commit {
+                        oid
+                        authoredDate
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          owner: ${{ github.event.repository.owner.login }}
+          repo: ${{ github.event.repository.name }}
+          pr_num: ${{ github.event.inputs.pr_number }}
+      - name: get commits
+        id: commits
+        run: |
+          commits="$(jq '[.repository.pullRequest.commits.nodes | sort_by(.commit.authoredDate) | .[].commit.oid]' <<< '${{ steps.get_pr.outputs.data }}' | tr -d '\n ')"
+          echo "Found commits: ${commits}"
+          echo ::set-output name=commits_arr::"${commits}"
+      - name: show commits
+        id: show
+        run: |
+          jq -c '.[]' <<< '${{ steps.commits.outputs.commits_arr }}' | xargs -L 1 -I "{}" echo "--{}--"
+
