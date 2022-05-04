@@ -54,7 +54,7 @@ jobs:
       - name: cherry-pick
         id: show
         run: |
-          jq -c '.[]' <<< '${{ steps.commits.outputs.commits_arr }}' | xargs -L 1 -I "{}" git cherry-pick -x
+          jq -c '.[]' <<< '${{ steps.commits.outputs.commits_arr }}' | xargs -L 1 -I "{}" git cherry-pick -x "{}"
           git push origin ${{ github.event.inputs.branch }}
 
 
