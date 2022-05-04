@@ -51,9 +51,11 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0
       - name: cherry-pick
         id: show
         run: |
+          echo "Currently on '$(git branch --show-current)' branch"
           jq -c '.[]' <<< '${{ steps.commits.outputs.commits_arr }}' | xargs -L 1 -I "{}" git cherry-pick -x "{}"
           git push origin ${{ github.event.inputs.branch }}
 
