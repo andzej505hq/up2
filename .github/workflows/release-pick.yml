@@ -52,11 +52,26 @@ jobs:
         with:
           ref: ${{ github.event.inputs.branch }}
           fetch-depth: 0
-      - name: cherry-pick
-        id: show
+      - name: set user
+        run: |
+          git config --global user.email "${{ github.event.sender.id }}+${{ github.event.sender.login }}@users.noreply.github.com"
+          git config --global user.name ${{ github.event.sender.login }}
+      - name: cherry-pick and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Currently on '$(git branch --show-current)' branch"
+          BRANCH="task/cherry_pick_pr_${{ github.event.inputs.pr_number }}_$(date +%F_%H-%M-%S)"
+          git checkout -b "${BRANCH}"
+          echo "Checked out to '$(git branch --show-current)' branch"
           jq -c '.[]' <<< '${{ steps.commits.outputs.commits_arr }}' | xargs -L 1 -I "{}" git cherry-pick -x "{}"
-          git push origin ${{ github.event.inputs.branch }}
+          git push origin ${BRANCH}
+          gh pr create \
+           --assignee ${{ github.event.sender.login }} \
+           --base ${{ github.event.inputs.branch }} \
+           --body "cherry-pick from #${{ github.event.inputs.pr_number }} into ${{ github.event.inputs.branch }}. [Automatically created with GitHub actions](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+           --head ${BRANCH} \
+           --title "cherry-pick from #${{ github.event.inputs.pr_number }} into ${{ github.event.inputs.branch }}"
+
 
 
